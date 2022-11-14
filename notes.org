@@ -1,0 +1,9 @@
+* chapter 6
+** Write a regular expression matching strings of all a or b such as aababa or bbaa.
+#+begin_src regex
+  /^(a|b)+$/
+#+end_src
+** Write a regular expression matching strings of consecutive `a` and `b` such as `ababababab` or `aba`
+#+begin_src regex
+  /^(a|b)+$/
+#+end_src
