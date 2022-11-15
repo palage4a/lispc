@@ -17,22 +17,73 @@ char* readline(char *prompt) {
 #include <editline/readline.h>
 #endif
 
-long eval_op(long x, char* op, long y) {
-  if (strcmp(op, "+") == 0) return x + y;
-  if (strcmp(op, "-") == 0) return x - y;
-  if (strcmp(op, "*") == 0) return x * y;
-  if (strcmp(op, "/") == 0) return x / y;
-  return 0;
+typedef struct {
+  int type;
+  long num;
+  int err;
+} lval;
+
+enum { LVAL_NUMM, LVAL_ERR };
+enum { LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM };
+
+
+lval lval_num(long x) {
+  lval v;
+  v.type = LVAL_NUMM;
+  v.num = x;
+  return v;
 }
 
-long eval(mpc_ast_t* t) {
+lval lval_err(int x) {
+  lval v;
+  v.type = LVAL_ERR;
+  v.err = x;
+  return v;
+}
+
+void lval_print(lval v) {
+  switch (v.type) {
+  case LVAL_NUMM: printf("%li\n", v.num); break;
+  case LVAL_ERR:
+    switch (v.err) {
+    case LERR_BAD_OP:
+      puts("Error: Invalid operator");
+      break;
+    case LERR_DIV_ZERO:
+      puts("Error: Zero division");
+      break;
+    case LERR_BAD_NUM:
+      puts("Error: Invalid number");
+      break;
+    }
+    break;
+  }
+}
+
+lval eval_op(lval x, char* op, lval y) {
+  if (x.type == LVAL_ERR) return x;
+  if (y.type == LVAL_ERR) return y;
+
+  if (strcmp(op, "+") == 0) return lval_num(x.num + y.num);
+  if (strcmp(op, "-") == 0) return lval_num(x.num - y.num);
+  if (strcmp(op, "*") == 0) return lval_num(x.num * y.num);
+  if (strcmp(op, "/") == 0) {
+    if (y.num == 0) return lval_err(LERR_DIV_ZERO);
+    return lval_num(x.num / y.num);
+  }
+  return lval_err(LERR_BAD_OP);
+}
+
+lval eval(mpc_ast_t* t) {
   if (strstr(t->tag, "number")) {
-    return atoi(t->contents);
+    errno = 0;
+    long x = strtol(t->contents, NULL, 10);
+    return errno != ERANGE ? lval_num(x) : lval_err(LERR_BAD_NUM);
   }
 
   char* op = t->children[1]->contents;
 
-  long x = eval(t->children[2]);
+  lval x = eval(t->children[2]);
 
   int i = 3;
   while (strstr(t->children[i]->tag, "expr")) {
@@ -66,9 +117,8 @@ lispy: /^/ <operator> <expr>+ /$/ ;            \
     // NOTE: mpc_result_t* does not work event we use -> later. why?
     mpc_result_t r;
     if (mpc_parse("<stdin>", input, Lispy, &r )) {
-      mpc_ast_print(r.output);
-      long res = eval(r.output);
-      printf("%li\n", res);
+      lval res = eval(r.output);
+      lval_print(res);
       mpc_ast_delete(r.output);
     } else {
       mpc_err_print(r.error);
