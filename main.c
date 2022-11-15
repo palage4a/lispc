@@ -19,8 +19,10 @@ char* readline(char *prompt) {
 
 typedef struct {
   int type;
-  long num;
-  int err;
+  union {
+    long num;
+    int err;
+  } val;
 } lval;
 
 enum { LVAL_NUMM, LVAL_ERR };
@@ -30,22 +32,22 @@ enum { LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM };
 lval lval_num(long x) {
   lval v;
   v.type = LVAL_NUMM;
-  v.num = x;
+  v.val.num = x;
   return v;
 }
 
 lval lval_err(int x) {
   lval v;
   v.type = LVAL_ERR;
-  v.err = x;
+  v.val.err = x;
   return v;
 }
 
 void lval_print(lval v) {
   switch (v.type) {
-  case LVAL_NUMM: printf("%li\n", v.num); break;
+  case LVAL_NUMM: printf("%li\n", v.val.num); break;
   case LVAL_ERR:
-    switch (v.err) {
+    switch (v.val.err) {
     case LERR_BAD_OP:
       puts("Error: Invalid operator");
       break;
@@ -64,12 +66,12 @@ lval eval_op(lval x, char* op, lval y) {
   if (x.type == LVAL_ERR) return x;
   if (y.type == LVAL_ERR) return y;
 
-  if (strcmp(op, "+") == 0) return lval_num(x.num + y.num);
-  if (strcmp(op, "-") == 0) return lval_num(x.num - y.num);
-  if (strcmp(op, "*") == 0) return lval_num(x.num * y.num);
+  if (strcmp(op, "+") == 0) return lval_num(x.val.num + y.val.num);
+  if (strcmp(op, "-") == 0) return lval_num(x.val.num - y.val.num);
+  if (strcmp(op, "*") == 0) return lval_num(x.val.num * y.val.num);
   if (strcmp(op, "/") == 0) {
-    if (y.num == 0) return lval_err(LERR_DIV_ZERO);
-    return lval_num(x.num / y.num);
+    if (y.val.num == 0) return lval_err(LERR_DIV_ZERO);
+    return lval_num(x.val.num / y.val.num);
   }
   return lval_err(LERR_BAD_OP);
 }
