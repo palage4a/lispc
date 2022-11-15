@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "mpc/mpc.h"
 
@@ -19,8 +20,8 @@ char* readline(char *prompt) {
 
 typedef struct {
   int type;
-  union {
-    long num;
+  union lval_union {
+    double num;
     int err;
   } val;
 } lval;
@@ -28,8 +29,7 @@ typedef struct {
 enum { LVAL_NUMM, LVAL_ERR };
 enum { LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM };
 
-
-lval lval_num(long x) {
+lval lval_num(double x) {
   lval v;
   v.type = LVAL_NUMM;
   v.val.num = x;
@@ -45,7 +45,7 @@ lval lval_err(int x) {
 
 void lval_print(lval v) {
   switch (v.type) {
-  case LVAL_NUMM: printf("%li\n", v.val.num); break;
+  case LVAL_NUMM: printf("%g\n", v.val.num); break;
   case LVAL_ERR:
     switch (v.val.err) {
     case LERR_BAD_OP:
@@ -69,7 +69,7 @@ lval eval_op(lval x, char* op, lval y) {
   if (strcmp(op, "+") == 0) return lval_num(x.val.num + y.val.num);
   if (strcmp(op, "-") == 0) return lval_num(x.val.num - y.val.num);
   if (strcmp(op, "*") == 0) return lval_num(x.val.num * y.val.num);
-  if (strcmp(op, "%") == 0) return lval_num(x.val.num % y.val.num);
+  if (strcmp(op, "%") == 0) return lval_num(remainder(x.val.num, y.val.num));
   if (strcmp(op, "/") == 0) {
     if (y.val.num == 0) return lval_err(LERR_DIV_ZERO);
     return lval_num(x.val.num / y.val.num);
@@ -80,7 +80,7 @@ lval eval_op(lval x, char* op, lval y) {
 lval eval(mpc_ast_t* t) {
   if (strstr(t->tag, "number")) {
     errno = 0;
-    long x = strtol(t->contents, NULL, 10);
+    double x = strtod(t->contents, NULL);
     return errno != ERANGE ? lval_num(x) : lval_err(LERR_BAD_NUM);
   }
 
@@ -96,6 +96,20 @@ lval eval(mpc_ast_t* t) {
   return x;
 }
 
+void debug() {
+  double a = 0;
+  double b = 3;
+  int z = 0;
+
+  printf("%f\n", a + b); // auto convert integer number due to   \
+                         // type of variable e.g. to decimal
+  printf("%d\n", a == z); // double zero equals integer zero
+  errno = 0;
+  char* end;
+  printf("%f\n", strtof(".32", &end));
+  printf("%d\n", errno);
+  printf("%p\n", end);
+}
 
 int main(int argc, char **argv) {
   mpc_parser_t *Number = mpc_new("number");
@@ -114,6 +128,7 @@ lispy: /^/ <operator> <expr>+ /$/ ;            \
   puts("Press Ctrl+c to Exit");
 
   while (1) {
+    /* debug(); */
     char *input = readline("lispc> ");
     add_history(input);
 
