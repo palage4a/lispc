@@ -18,7 +18,7 @@ char* readline(char *prompt) {
 #include <editline/readline.h>
 #endif
 
-typedef struct {
+typedef struct lval {
   int type;
   union lval_union {
     double num;
@@ -30,6 +30,13 @@ typedef struct {
 } lval;
 
 enum { LVAL_NUM, LVAL_SYM, LVAL_SEXPR, LVAL_ERR };
+
+void lval_print(lval* v);
+lval* lval_eval(lval* v);
+lval* lval_eval_sexpr(lval* v);
+lval* lval_nnpop(lval* v, int i);
+lval* lval_take(lval* v, int i);
+lval* builtin_op(lval* v, char* s);
 
 lval* lval_num(double x) {
   lval* v = malloc(sizeof(lval));
@@ -90,6 +97,89 @@ lval* lval_add(lval* x, lval* y) {
   return x;
 }
 
+lval* lval_pop(lval* v, int i) {
+  lval* x = v->cell[i];
+  memmove(&v->cell[i], &v->cell[i+1],
+          sizeof(lval*) * (v->count-i-1));
+  v->count--;
+
+  v->cell = realloc(v->cell, sizeof(lval*) * v->count);
+  return x;
+}
+
+lval* lval_take(lval* v, int i) {
+  lval* x = lval_pop(v, i);
+  lval_del(v);
+  return x;
+}
+
+lval* builtin_op(lval* v, char* op) {
+  for(int i = 0; i < v->count; i++) {
+    if (v->cell[i]->type != LVAL_NUM) {
+      lval_del(v);
+      return lval_err("Can not operates non-numbers");
+    }
+  }
+
+  lval* x = lval_pop(v, 0);
+
+  if ((strcmp(op, "-") == 0) && (v->count == 0)) {
+    x->val.num = -x->val.num;
+  }
+
+  while (v->count != 0) {
+    lval* y = lval_pop(v, 0);
+
+    if (strcmp(op, "+") == 0) x->val.num += y->val.num;
+    if (strcmp(op, "-") == 0) x->val.num -= y->val.num;
+    if (strcmp(op, "*") == 0) x->val.num *= y->val.num;
+    if (strcmp(op, "/") == 0) {
+      if (y->val.num == 0) {
+        lval_del(x);
+        lval_del(y);
+        x = lval_err("Division by zero");
+        break;
+      }
+      x->val.num /= y->val.num;
+    }
+  }
+
+  lval_del(v);
+  return x;
+}
+
+lval* lval_eval(lval* v) {
+  return v->type == LVAL_SEXPR ? lval_eval_sexpr(v) : v;
+}
+
+lval* lval_eval_sexpr(lval* v) {
+  for (int i = 0; i < v->count; i++ ){
+    v->cell[i] = lval_eval(v->cell[i]);
+  }
+
+  for (int i = 0; i< v->count; i++ ) {
+    if (v->type == LVAL_ERR) {
+      return lval_take(v->cell[i], i);
+    }
+  }
+
+  if (v->count == 0) return v;
+
+  if (v->count == 1) return lval_take(v, 0);
+
+  lval* f = lval_pop(v, 0);
+  if(f->type != LVAL_SYM) {
+    lval_del(f);
+    lval_del(v);
+    return lval_err("S-Expresions does not start with operator");
+  }
+
+  lval* result = builtin_op(v, f->val.sym);
+  lval_del(f);
+
+  return result;
+}
+
 lval* lval_read(mpc_ast_t* t) {
   /* printf("%s\n", t->tag); */
   /* printf("%s\n", t->contents); */
@@ -112,7 +202,6 @@ lval* lval_read(mpc_ast_t* t) {
   return x;
 }
 
-void lval_print(lval* v);
 
 void lval_expr_print(lval* v, char open, char close) {
   putchar(open);
@@ -176,7 +265,7 @@ lispy: /^/ <expr>* /$/ ;            \
     // NOTE: mpc_result_t* does not work event we use -> later. why?
     mpc_result_t r;
     if (mpc_parse("<stdin>", input, Lispy, &r )) {
-      lval* res = lval_read(r.output);
+      lval* res = lval_eval(lval_read(r.output));
       lval_println(res);
       lval_del(res);
       mpc_ast_delete(r.output);
